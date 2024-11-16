@@ -1,0 +1,39 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f9f9f9;
+    margin: 0;
+    padding: 20px;
+  }
+  
+  .popup-container {
+    text-align: center;
+  }
+  
+  .controls, .skip-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 10px 0;
+  }
+  
+  .control-btn {
+    background-color: #d94712;
+    border: none;
+    color: white;
+    padding: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 0 5px;
+    border-radius: 5px;
+  }
+  
+  .control-btn i {
+    margin-right: 5px;
+  }
+  
+  #speedDisplay {
+    font-size: 20px;
+    font-weight: bold;
+    margin: 0 15px;
+  }
+  
