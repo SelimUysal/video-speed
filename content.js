@@ -23,6 +23,11 @@
   const DEFAULT_SPEED = 1.5;
   const INSET = 12;
   const videos = new Map();
+  const policy = globalThis.VideoSpeedPolicy;
+  let preferredVideo = null;
+  let activeVideo = null;
+  const pendingNodes = new Set();
+  let discoveryScheduled = false;
   const observed = new WeakSet();
   const tr = /^tr/i.test(navigator.language || '');
   const valid = n => n !== undefined && n !== null && Number.isFinite(+n) && +n >= 0.1 && +n <= 16;
@@ -68,19 +73,24 @@
 
   function paint() { speedButton.textContent = `${Number(rate.toFixed(2))}×`; }
   function persistSpeed() { if (ready) chrome.storage.local.set({ [SPEED_KEY]: rate }).catch(() => {}); }
-  function apply(video) {
-    if (!ready || !video.isConnected) return;
+  function apply(video, force = false) {
+    if (!ready || !video?.isConnected || video !== selectVideo()) return;
     try {
       const state = videos.get(video);
-      if (state) state.programmaticAt = Date.now();
-      if (Math.abs(video.playbackRate - rate) > 0.001) video.playbackRate = rate;
-      if (Math.abs(video.defaultPlaybackRate - rate) > 0.001) video.defaultPlaybackRate = rate;
-    } catch (_) { /* A protected player may reject changes. */ }
+      if (state?.yieldUntil > Date.now() && !force) return;
+      if (Math.abs(video.playbackRate - rate) > 0.001) {
+        if (state) state.programmaticAt = Date.now();
+        video.playbackRate = rate;
+      }
+      // Do not write defaultPlaybackRate: some players interpret it as another
+      // competing controller and re-apply their own speed repeatedly.
+    } catch (_) { /* Player can reject a playback-rate update. */ }
   }
   function setSpeed(value, persist = true) {
     if (!ready || !Number.isFinite(Number(value))) return;
     rate = rounded(value); paint();
-    for (const video of videos.keys()) apply(video);
+    const selected = selectVideo();
+    if (selected) apply(selected, true);
     wake(false);
     if (persist) persistSpeed();
   }
@@ -92,14 +102,20 @@
       r.left < innerWidth && r.top < innerHeight && s.display !== 'none' && s.visibility !== 'hidden';
   }
   function selectVideo() {
+    if (preferredVideo && visible(preferredVideo)) return preferredVideo;
     let best = null, score = -1;
     for (const video of videos.keys()) {
       if (!visible(video)) continue;
-      const r = video.getBoundingClientRect();
-      const points = Math.min(r.width * r.height, 1500000) + (!video.paused && !video.ended ? 2000000 : 0);
+      const rect = video.getBoundingClientRect();
+      const points = policy.videoScore(rect.width, rect.height, video.paused, video.ended);
       if (points > score) { score = points; best = video; }
     }
     return best;
+  }
+  function markPreferred(video) {
+    if (!video?.isConnected) return;
+    preferredVideo = video;
+    schedule();
   }
   function skip(seconds) {
     const video = selectVideo();
@@ -155,9 +171,15 @@
       queued = false;
       for (const [video, state] of videos) {
         if (video.isConnected) continue;
+        if (video === preferredVideo) preferredVideo = null;
         state.listeners.forEach(([event, listener]) => video.removeEventListener(event, listener));
         clearTimeout(state.pending);
         videos.delete(video);
+      }
+      const selected = selectVideo();
+      if (selected !== activeVideo) {
+        activeVideo = selected;
+        if (selected) apply(selected);
       }
       position();
     });
@@ -166,18 +188,31 @@
   function trackVideo(video) {
     if (videos.has(video)) return;
     const state = { listeners: [], graceUntil: Date.now() + 1400,
-      programmaticAt: 0, conflictSince: 0, conflicts: 0, pending: null };
+      programmaticAt: 0, conflictSince: 0, conflicts: 0, pending: null, yieldUntil: 0 };
     videos.set(video, state);
     const on = (name, cb) => { video.addEventListener(name, cb); state.listeners.push([name, cb]); };
     for (const event of ['loadstart', 'loadedmetadata', 'emptied']) {
-      on(event, () => { state.graceUntil = Date.now() + 1200; state.conflicts = 0; apply(video); schedule(); });
+      on(event, () => {
+        state.graceUntil = Date.now() + 1200;
+        state.conflicts = 0;
+        state.yieldUntil = 0;
+        if (video === selectVideo()) apply(video);
+        schedule();
+      });
     }
     for (const event of ['canplay', 'play', 'playing']) {
-      on(event, () => { apply(video); schedule(); });
+      on(event, () => {
+        if (event === 'play' && Date.now() - inputAt < 1200 && video !== preferredVideo) markPreferred(video);
+        if (video === selectVideo()) apply(video);
+        schedule();
+      });
     }
+    on('pointerdown', () => markPreferred(video));
+    on('focusin', () => markPreferred(video));
     on('ratechange', () => {
-      if (!ready || Math.abs(video.playbackRate - rate) < .001) return;
+      if (!ready || video !== selectVideo() || Math.abs(video.playbackRate - rate) < .001) return;
       const now = Date.now(), changed = video.playbackRate;
+      if (state.yieldUntil > now) return;
       // A deliberate adjustment made with the website's own speed control wins.
       // Do not mistake the player resetting to 1x during load for a user preference.
       if (valid(changed) && video === selectVideo() && now > state.graceUntil &&
@@ -193,34 +228,56 @@
       // Yield when another controller repeatedly forces a competing value.
       if (now - state.conflictSince > 3000) { state.conflictSince = now; state.conflicts = 0; }
       if (++state.conflicts <= 3) apply(video);
+      else state.yieldUntil = now + 5000; // Let a stubborn player take control temporarily.
     });
-    apply(video); schedule();
+    schedule();
   }
+  // Discover each new subtree once, on the next animation frame. No polling.
   function discover(node) {
-    if (node.matches?.('video')) trackVideo(node);
-    node.querySelectorAll?.('video').forEach(trackVideo);
-    node.querySelectorAll?.('*').forEach(el => { if (el.shadowRoot) observe(el.shadowRoot); });
+    if (!node || node.nodeType !== 1 || node === host) return;
+    if (node.tagName === 'VIDEO') trackVideo(node);
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
+    let element;
+    while ((element = walker.nextNode())) {
+      if (element === host) continue;
+      if (element.tagName === 'VIDEO') trackVideo(element);
+      if (element.shadowRoot) observe(element.shadowRoot);
+    }
+    if (node.shadowRoot) observe(node.shadowRoot);
+  }
+  function queueDiscovery(node) {
+    if (!node || node.nodeType !== 1 || node === host) return;
+    pendingNodes.add(node);
+    if (discoveryScheduled) return;
+    discoveryScheduled = true;
+    requestAnimationFrame(() => {
+      discoveryScheduled = false;
+      const batch = [...pendingNodes];
+      pendingNodes.clear();
+      for (const element of batch) if (element.isConnected) discover(element);
+      schedule();
+    });
   }
   function observe(node) {
     if (observed.has(node)) return;
     observed.add(node);
-    new MutationObserver(records => {
-      let changed = false;
+    const observer = new MutationObserver(records => {
+      let removed = false;
       for (const record of records) {
         if (record.type === 'attributes') {
           if (record.target.tagName === 'VIDEO') {
-            trackVideo(record.target); apply(record.target); changed = true;
+            trackVideo(record.target);
+            if (record.target === selectVideo()) apply(record.target);
           }
         } else {
-          for (const node of record.addedNodes) {
-            if (node.nodeType === 1) { discover(node); changed = true; }
-          }
-          if (record.removedNodes.length) changed = true;
+          for (const element of record.addedNodes) queueDiscovery(element);
+          if (record.removedNodes.length) removed = true;
         }
       }
-      if (changed) schedule();
-    }).observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
-    discover(node);
+      if (removed) schedule();
+    });
+    observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    discover(node.nodeType === 1 ? node : node.host || node);
   }
 
   const labels = tr
@@ -392,7 +449,8 @@
   }
   function onKeyDown(event) {
     if (!ready || !selectVideo() || event.defaultPrevented || event.isComposing ||
-        event.ctrlKey || event.altKey || event.metaKey || editing(event)) return;
+        event.ctrlKey || event.altKey || event.metaKey || editing(event) ||
+        policy.isInteractivePath(event.composedPath?.() || [event.target])) return;
     const key = event.key.toLowerCase();
     if (key === 'd' || key === 's') { startHold(key); event.preventDefault(); return; }
     if (event.repeat) return;
@@ -416,13 +474,15 @@
     }, true);
     document.addEventListener('keydown', event => {
       inputMode = 'keyboard';
-      if (event.isTrusted && !editing(event)) inputAt = Date.now();
+      if (event.isTrusted && !editing(event) &&
+          !policy.isInteractivePath(event.composedPath?.() || [event.target])) inputAt = Date.now();
     }, true);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (valid(changes[SPEED_KEY]?.newValue) && !heldKey) {
         rate = rounded(changes[SPEED_KEY].newValue); paint();
-        for (const video of videos.keys()) apply(video);
+        const video = selectVideo();
+        if (video) apply(video, true);
       }
       if (validAnchor(changes[POSITION_KEY]?.newValue) && !drag) {
         anchor = changes[POSITION_KEY].newValue; schedule();
@@ -439,7 +499,8 @@
     addEventListener('scroll', schedule, true);
     addEventListener('resize', schedule);
     document.addEventListener('fullscreenchange', schedule);
-    document.addEventListener('keydown', onKeyDown, true);
+    // Bubble phase: let the website handle its own shortcuts first.
+    document.addEventListener('keydown', onKeyDown, false);
     document.addEventListener('keyup', e => {
       if (e.key.toLowerCase() === heldKey) { stopHold(); e.preventDefault(); }
     }, true);
@@ -451,7 +512,8 @@
       if (validAnchor(data[POSITION_KEY])) anchor = data[POSITION_KEY];
     }).catch(() => {}).finally(() => {
       ready = true; paint();
-      for (const video of videos.keys()) apply(video);
+      const selected = selectVideo();
+      if (selected) apply(selected);
       position(); fadeAfter();
     });
   }
