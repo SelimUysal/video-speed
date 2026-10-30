@@ -1,0 +1,74 @@
+name: Video Speed - Chrome Web Store
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-speed-chrome-web-store
+  cancel-in-progress: false
+
+jobs:
+  check-connection:
+    name: Check Web Store Connection (no publishing)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check extension status using service account
+        uses: cssnr/webstore-publish-action@v1
+        with:
+          extension_id: cmjafmcaccbhfgcjnfldaahebnbbppje
+          publisher_id: ${{ secrets.CWS_PUBLISHER_ID }}
+          json_data: ${{ secrets.WEBSTORE_JSON }}
+          status: true
+
+  publish:
+    name: Upload & Submit Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tagged release
+        uses: actions/checkout@v4
+
+      - name: Validate release tag and manifest version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./manifest.json').version")"
+          if [[ "$RELEASE_TAG" != "v$version" ]]; then
+            echo "Tag ($RELEASE_TAG) must equal manifest version (v$version)"
+            exit 1
+          fi
+
+      - name: Check JavaScript and extension files
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check content.js
+          node --check popup.js
+          for path in manifest.json content.js popup.html popup.js styles.css icons/16.png icons/48.png icons/128.png; do
+            test -f "$path" || { echo "Missing file: $path"; exit 1; }
+          done
+
+      - name: Package extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          zip -q -r video-speed.zip manifest.json content.js popup.html popup.js styles.css icons
+          unzip -t video-speed.zip
+
+      - name: Upload and submit for Google review
+        uses: cssnr/webstore-publish-action@v1
+        with:
+          extension_id: cmjafmcaccbhfgcjnfldaahebnbbppje
+          publisher_id: ${{ secrets.CWS_PUBLISHER_ID }}
+          json_data: ${{ secrets.WEBSTORE_JSON }}
+          zip_file: video-speed.zip
+          publish: default
