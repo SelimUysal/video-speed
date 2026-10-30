@@ -28,15 +28,15 @@
   shadow.innerHTML = `
     <style>
       *{box-sizing:border-box}
-      .panel{display:flex;align-items:center;gap:2px;width:max-content;max-width:95vw;
-        background:rgba(30,34,42,.91);color:#fff;padding:3px;border:1px solid #ffffff22;
+      .panel{display:flex;align-items:center;gap:1px;width:max-content;max-width:95vw;
+        background:rgba(30,34,42,.91);color:#fff;padding:2px 3px;border:1px solid #ffffff22;
         border-radius:9px;box-shadow:0 2px 10px #0004;opacity:1;
         font:600 11px system-ui,-apple-system,sans-serif;transition:opacity .45s ease}
       .panel.idle{opacity:.38}.panel:hover,.panel:focus-within{opacity:1}
       button{background:transparent;color:inherit;border:0;min-width:28px;height:28px;
         padding:0 5px;font:inherit;border-radius:6px;cursor:pointer;touch-action:none}
       button:hover{background:#ffffff2c}button:focus-visible{outline:2px solid #b3d4ff;outline-offset:1px}
-      #speed{min-width:46px;cursor:grab;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none}
+      #speed{min-width:44px;cursor:grab;font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none}
       #speed.dragging{cursor:grabbing;background:#ffffff29}
       .controls{display:flex;align-items:center;gap:1px}.controls[hidden]{display:none}
       .controls button{font-size:14px;font-weight:500}
@@ -49,7 +49,7 @@
   const panel = shadow.querySelector('.panel');
   const speedButton = shadow.querySelector('#speed');
   const controls = shadow.querySelector('.controls');
-  speedButton.title = tr ? 'Sürükle: taşı · Tıkla: kontroller' : 'Drag: move · Click: controls';
+  speedButton.title = tr ? 'Tekerlek: hız ayarı · Sürükle: taşı · Tıkla: kontroller' : 'Wheel: change speed · Drag: move · Click: controls';
   speedButton.setAttribute('aria-label', speedButton.title);
 
   function paint() { speedButton.textContent = `${Number(rate.toFixed(2))}×`; }
@@ -258,6 +258,47 @@
   shadow.addEventListener('focusout', () => setTimeout(() => {
     if (!keyboardFocus() && !host.matches(':hover')) hideAfter();
   }, 0));
+
+  // Wheel input is scoped ONLY to the numeric speed button. A non-passive
+  // listener prevents the page from scrolling while the pointer is there.
+  // Discrete mouse-wheel notches change speed once; smaller trackpad deltas
+  // accumulate to avoid overly sensitive speed jumps.
+  let wheelAccum = 0, wheelAt = 0, wheelDirection = 0;
+  speedButton.addEventListener('wheel', event => {
+    // Preserve browser zoom / modifier gestures instead of hijacking them.
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.cancelable) event.preventDefault();
+    event.stopPropagation();
+    if (!ready || !selectVideo() || drag || !event.deltaY) return;
+
+    const now = Date.now();
+    const direction = Math.sign(event.deltaY);
+    if (now - wheelAt > 240 || wheelDirection !== direction) wheelAccum = 0;
+    wheelAt = now;
+    wheelDirection = direction;
+
+    const delta = Math.abs(event.deltaY);
+    let steps = 0;
+    if (event.deltaMode === 2) {
+      // A page-based wheel step is one deliberate adjustment.
+      steps = 1;
+      wheelAccum = 0;
+    } else if (event.deltaMode === 1) {
+      // Each line-scrolling mouse notch should change speed by 0.1x.
+      steps = Math.max(1, Math.min(3, Math.round(delta / 3)));
+      wheelAccum = 0;
+    } else if (delta >= 60) {
+      // Common mouse wheels produce about 100px per notch.
+      steps = Math.max(1, Math.min(3, Math.round(delta / 100)));
+      wheelAccum = 0;
+    } else {
+      // Precision touchpads report a stream of small pixel deltas.
+      wheelAccum += delta;
+      steps = Math.floor(wheelAccum / 60);
+      wheelAccum -= steps * 60;
+    }
+    if (steps) setSpeed(rate - direction * steps * .1);
+  }, { passive: false });
 
   // Exact pixel pointer movement; store a normalized position for other video sizes.
   speedButton.addEventListener('pointerdown', e => {
