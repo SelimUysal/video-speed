@@ -1,0 +1,19 @@
+name: Video Speed - Quality Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: |
+          node --check video-policy.js
+          node --check content.js
+          node --check popup.js
+      - name: Run playback selection and keyboard-safety tests
+        run: node --test tests/*.test.cjs
