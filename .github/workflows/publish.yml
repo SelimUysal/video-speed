@@ -76,8 +76,8 @@ jobs:
           node --check content.js
           node --test tests/*.test.cjs
           node --check popup.js
-          node -e "const m=require('./manifest.json');if(m.manifest_version!==3||!m.version)process.exit(1)"
-          for path in manifest.json video-policy.js content.js popup.html popup.js styles.css icons/16.png icons/48.png icons/128.png; do
+          node -e "const m=require('./manifest.json');if(m.manifest_version!==3||!m.version||m.default_locale!=='en')process.exit(1);for(const loc of ['en','tr']){const data=require('./_locales/'+loc+'/messages.json');for(const k of ['extName','extShortName','extDescription'])if(!data[k]?.message)process.exit(1)}"
+          for path in manifest.json video-policy.js content.js popup.html popup.js styles.css _locales/en/messages.json _locales/tr/messages.json icons/16.png icons/48.png icons/128.png; do
             test -f "$path" || { echo "Missing file: $path"; exit 1; }
           done
 
@@ -85,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          zip -q -r video-speed.zip manifest.json video-policy.js content.js popup.html popup.js styles.css icons
+          zip -q -r video-speed.zip manifest.json video-policy.js content.js popup.html popup.js styles.css icons _locales
           unzip -t video-speed.zip
 
       - name: Upload and submit for Google review
