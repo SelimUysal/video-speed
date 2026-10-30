@@ -199,14 +199,14 @@
         state.graceUntil = Date.now() + 1200;
         state.conflicts = 0;
         state.yieldUntil = 0;
-        if (video === selectVideo()) apply(video);
+        apply(video);
         schedule();
       });
     }
     for (const event of ['canplay', 'play', 'playing']) {
       on(event, () => {
         if (event === 'play' && Date.now() - inputAt < 1200 && video !== preferredVideo) markPreferred(video);
-        if (video === selectVideo()) apply(video);
+        apply(video);
         schedule();
       });
     }
@@ -217,7 +217,7 @@
       const now = Date.now(), changed = video.playbackRate;
       // A deliberate adjustment made with the website's own speed control wins.
       // Do not mistake the player resetting to 1x during load for a user preference.
-      if (valid(changed) && video === selectVideo() && now > state.graceUntil &&
+      if (valid(changed) && now > state.graceUntil &&
           now - inputAt < 1800 && now - state.programmaticAt > 120) {
         clearTimeout(state.pending);
         state.pending = setTimeout(() => {
@@ -269,7 +269,7 @@
         if (record.type === 'attributes') {
           if (record.target.tagName === 'VIDEO') {
             trackVideo(record.target);
-            if (record.target === selectVideo()) apply(record.target);
+            apply(record.target);
           }
         } else {
           for (const element of record.addedNodes) queueDiscovery(element);
