@@ -15,5 +15,6 @@ jobs:
           node --check video-policy.js
           node --check content.js
           node --check popup.js
+          node -e "const m=require('./manifest.json');if(m.default_locale!=='en'||!/^1\\.2\\./.test(m.version))process.exit(1);for(const locale of ['en','tr']){const data=require('./_locales/'+locale+'/messages.json');for(const k of ['extName','extShortName','extDescription']){if(!data[k]?.message)process.exit(1)}}"
       - name: Run playback selection and keyboard-safety tests
         run: node --test tests/*.test.cjs
