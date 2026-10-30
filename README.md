@@ -2,7 +2,9 @@
 
 [Chrome Web Store](https://chromewebstore.google.com/detail/video-speed/cmjafmcaccbhfgcjnfldaahebnbbppje)
 
-Minimal, cross-website HTML5 video speed controls. Version 1.1.0 adds late-video detection, SPA/video replacement tracking, a hover-to-expand floating controller, drag-to-position support, native player speed-change compatibility, modern popup, bilingual labels and persistent preferences stored in Chrome's `chrome.storage.local`. Set 4× once and subsequent supported videos use 4×, even after closing Chrome. The controller starts at the video’s top-left with a small inset. Drag the speed indicator to reposition it by pixel, and the relative location is remembered across sites and window sizes. Controls collapse when the pointer leaves and the speed indicator fades. A speed deliberately chosen via a site's own player controls can become the new preference; player resets during video loading are ignored. Repeated conflicting forced speed changes are limited to avoid endless loops. Your old per-site speed is migrated on a best-effort basis.
+Lightweight HTML5 video controls, with one playback-speed and panel-position preference **per website**. YouTube can stay at 3× while another site stays at 16×. Same-site tabs share the setting. The on-video controller starts in the upper-left, can be dragged, opens on hover and fades when unused. Mouse-wheel speed control only blocks page scrolling while the pointer is over the speed label. Dynamic video discovery handles single-page navigation and open Shadow DOM players where accessible. Multiple-player pages prioritize the selected/playing visible video.
+
+The extension uses Chrome local storage only; it does not track usage or send browsing data. Some DRM or restricted players may reject playback-rate changes.
 
 ## Controls
 
@@ -14,7 +16,7 @@ Minimal, cross-website HTML5 video speed controls. Version 1.1.0 adds late-video
 | R | 1× |
 | Z / X | 10 seconds backward / forward |
 
-The speed range is 0.1×–16×. Shortcuts are ignored while editing text or with Ctrl/Alt/Meta held. Some sites may use overlapping shortcuts. Some protected players, non-HTML5 media, closed-shadow-root players, or platforms that override playback speed may not be supported.
+The speed range is 0.1×–16×. Shortcuts are ignored while editing text or using page controls, or with Ctrl/Alt/Meta held. Some sites may use overlapping shortcuts. Some protected players, non-HTML5 media, closed-shadow-root players, or platforms that override playback speed may not be supported.
 
 ## Install locally
 
