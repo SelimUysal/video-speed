@@ -10,7 +10,7 @@ Video Speed injects a content script into eligible websites and frames to detect
 
 ## Preferences stored locally
 
-The extension saves only a numeric playback-speed preference, such as 4, in Chrome's `chrome.storage.local`. This persists across pages, sites, tabs, and browser restarts until it is changed, cleared, or the extension is uninstalled. The first use after upgrading may import an older preference from a website's `localStorage` if no new preference exists. This old value is only used to initialize the local preference.
+The extension saves a numeric playback-speed preference (such as 4) and, when the user moves the floating controller, its normalized on-video position (two values between 0 and 1) in Chrome's `chrome.storage.local`. These preferences persist across pages, sites, tabs, and browser restarts until changed, cleared, or the extension is uninstalled. To respect deliberate native player speed choices, the extension temporarily observes local input timing in memory; this timing is not stored or transmitted. The first use after upgrading may import an older preference from a website's `localStorage` if no new preference exists. This old value is only used to initialize the local preference.
 
 ## Sharing and control
 
