@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Video Speed",
-  "version": "1.1.0",
-  "description": "Simple video speed control that remembers your speed across videos, tabs, and websites.",
+  "name": "__MSG_extName__",
+  "version": "1.2.0",
+  "description": "__MSG_extDescription__",
   "permissions": [
     "storage"
   ],
@@ -26,5 +26,7 @@
       "run_at": "document_idle",
       "all_frames": true
     }
-  ]
+  ],
+  "default_locale": "en",
+  "short_name": "__MSG_extShortName__"
 }

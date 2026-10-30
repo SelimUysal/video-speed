@@ -1,0 +1,12 @@
+{
+  "extName": {
+    "message": "Video Speed – Playback Controller",
+    "description": "Chrome Web Store name: concise and specific to video playback speed."
+  },
+  "extShortName": {
+    "message": "Video Speed"
+  },
+  "extDescription": {
+    "message": "Control HTML5 video speed with shortcuts, mouse wheel, and a draggable panel. Remember playback speed separately for each site."
+  }
+}
