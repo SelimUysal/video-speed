@@ -22,6 +22,10 @@ The speed range is 0.1×–16×. Shortcuts are ignored while editing text or usi
 
 Download repository, open `chrome://extensions`, enable **Developer mode**, then choose **Load unpacked** and the directory containing `manifest.json`.
 
+## Release 1.2.0
+
+This release includes refreshed icons, bilingual extension metadata, site-specific speed/position preferences, mouse-wheel control, and updated privacy documentation. The current Chrome Web Store listing is managed in the Developer Dashboard.
+
 ## Publishing
 
 GitHub Actions manually checks store connection; pushing a tag matching `v` + `manifest.json` version packages the extension and submits it for Google review. See [Privacy Policy](PRIVACY_POLICY.md).
