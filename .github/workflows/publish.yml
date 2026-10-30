@@ -27,7 +27,10 @@ concurrency:
 jobs:
   check-connection:
     name: Check Web Store Connection (no publishing)
-    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'publish'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.operation != 'publish') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+       github.event.head_commit.message == 'release: check Chrome Web Store readiness')
     runs-on: ubuntu-latest
     steps:
       - name: Check extension status using service account
