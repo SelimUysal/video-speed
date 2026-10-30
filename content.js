@@ -1,4 +1,4 @@
-/* Video Speed: adaptive video detection, global rate, draggable compact controls. */
+/* Video Speed: site-specific speed controls, dynamic video discovery and safe shortcuts. */
 (() => {
   'use strict';
   if (globalThis.__vsInit) return;
@@ -28,7 +28,7 @@
   let activeVideo = null;
   const pendingNodes = new Set();
   let discoveryScheduled = false;
-  const observed = new WeakSet();
+  const observers = new Map();
   const tr = /^tr/i.test(navigator.language || '');
   const valid = n => n !== undefined && n !== null && Number.isFinite(+n) && +n >= 0.1 && +n <= 16;
   const rounded = n => Math.round(Math.max(0.1, Math.min(16, Number(n))) * 100) / 100;
@@ -38,7 +38,7 @@
   let expanded = false, queued = false, drag = null, ignoreClick = false;
   let hideTimer = null, fadeTimer = null, heldKey = null;
   let holdDelay = null, holdInterval = null, holdSince = 0, lastPersist = 0;
-  let inputAt = 0, inputMode = 'pointer', lastSelected = null;
+  let inputAt = 0, inputMode = 'pointer';
 
   const host = document.createElement('div');
   host.id = 'video-speed-controller-host';
@@ -78,6 +78,7 @@
     try {
       const state = videos.get(video);
       if (state?.yieldUntil > Date.now() && !force) return;
+      if (state && force) { state.yieldUntil = 0; state.conflicts = 0; }
       if (Math.abs(video.playbackRate - rate) > 0.001) {
         if (state) state.programmaticAt = Date.now();
         video.playbackRate = rate;
@@ -113,7 +114,7 @@
     return best;
   }
   function markPreferred(video) {
-    if (!video?.isConnected) return;
+    if (!video?.isConnected || preferredVideo === video) return;
     preferredVideo = video;
     schedule();
   }
@@ -151,7 +152,6 @@
   }
   function position() {
     const video = selectVideo();
-    lastSelected = video;
     if (!ready || !video || document.fullscreenElement?.tagName === 'VIDEO') {
       host.style.display = 'none'; return;
     }
@@ -175,6 +175,9 @@
         state.listeners.forEach(([event, listener]) => video.removeEventListener(event, listener));
         clearTimeout(state.pending);
         videos.delete(video);
+      }
+      for (const [root, observer] of observers) {
+        if (!root.isConnected) { observer.disconnect(); observers.delete(root); }
       }
       const selected = selectVideo();
       if (selected !== activeVideo) {
@@ -212,7 +215,6 @@
     on('ratechange', () => {
       if (!ready || video !== selectVideo() || Math.abs(video.playbackRate - rate) < .001) return;
       const now = Date.now(), changed = video.playbackRate;
-      if (state.yieldUntil > now) return;
       // A deliberate adjustment made with the website's own speed control wins.
       // Do not mistake the player resetting to 1x during load for a user preference.
       if (valid(changed) && video === selectVideo() && now > state.graceUntil &&
@@ -225,6 +227,7 @@
         return;
       }
       if (now < state.graceUntil) { apply(video); return; }
+      if (state.yieldUntil > now) return;
       // Yield when another controller repeatedly forces a competing value.
       if (now - state.conflictSince > 3000) { state.conflictSince = now; state.conflicts = 0; }
       if (++state.conflicts <= 3) apply(video);
@@ -234,7 +237,7 @@
   }
   // Discover each new subtree once, on the next animation frame. No polling.
   function discover(node) {
-    if (!node || node.nodeType !== 1 || node === host) return;
+    if (!node || ![1, 9, 11].includes(node.nodeType) || node === host) return;
     if (node.tagName === 'VIDEO') trackVideo(node);
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
     let element;
@@ -259,8 +262,7 @@
     });
   }
   function observe(node) {
-    if (observed.has(node)) return;
-    observed.add(node);
+    if (observers.has(node)) return;
     const observer = new MutationObserver(records => {
       let removed = false;
       for (const record of records) {
@@ -277,7 +279,8 @@
       if (removed) schedule();
     });
     observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
-    discover(node.nodeType === 1 ? node : node.host || node);
+    observers.set(node, observer);
+    discover(node);
   }
 
   const labels = tr
@@ -399,7 +402,6 @@
     if (moved) {
       const video = selectVideo();
       if (video) {
-        const b = bounds(video);
         anchor = {
           x: clamp((parseFloat(host.style.left) - video.getBoundingClientRect().left - INSET) / Math.max(1, video.getBoundingClientRect().width - 2 * INSET), 0, 1),
           y: clamp((parseFloat(host.style.top) - video.getBoundingClientRect().top - INSET) / Math.max(1, video.getBoundingClientRect().height - 2 * INSET), 0, 1)
