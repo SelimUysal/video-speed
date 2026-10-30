@@ -4,8 +4,22 @@
   if (globalThis.__vsInit) return;
   globalThis.__vsInit = true;
 
-  const SPEED_KEY = 'playbackRate';
-  const POSITION_KEY = 'controllerPosition';
+  // Store settings independently for the top-level website, including embedded players.
+  function siteName() {
+    let host = location.hostname.toLowerCase().replace(/^www\./, '');
+    try {
+      const list = location.ancestorOrigins;
+      if (list?.length) {
+        const top = new URL(list[list.length - 1]).hostname.toLowerCase().replace(/^www\./, '');
+        if (top) host = top;
+      }
+    } catch (_) {}
+    return host || 'local-page';
+  }
+  const SITE = siteName();
+  const PREFIX = 'videoSpeed.site.v1.';
+  const SPEED_KEY = PREFIX + 'speed.' + encodeURIComponent(SITE);
+  const POSITION_KEY = PREFIX + 'position.' + encodeURIComponent(SITE);
   const DEFAULT_SPEED = 1.5;
   const INSET = 12;
   const videos = new Map();
@@ -415,7 +429,7 @@
       }
     });
     chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-      if (msg?.action === 'getStatus') { reply({ hasVideo: !!selectVideo(), rate }); return; }
+      if (msg?.action === 'getStatus') { reply({ hasVideo: !!selectVideo(), rate, siteHost: SITE }); return; }
       if (msg?.action === 'rewind' || msg?.action === 'forward') {
         reply({ ok: skip(msg.action === 'rewind' ? -10 : 10) }); return;
       }
@@ -433,12 +447,7 @@
     document.addEventListener('visibilitychange', () => { if (document.hidden) stopHold(); });
     chrome.storage.local.get([SPEED_KEY, POSITION_KEY]).then(data => {
       if (valid(data[SPEED_KEY])) rate = rounded(data[SPEED_KEY]);
-      else {
-        let older = null;
-        try { older = localStorage.getItem(SPEED_KEY); } catch (_) {}
-        rate = valid(older) ? rounded(older) : DEFAULT_SPEED;
-        chrome.storage.local.set({ [SPEED_KEY]: rate }).catch(() => {});
-      }
+      else rate = DEFAULT_SPEED;
       if (validAnchor(data[POSITION_KEY])) anchor = data[POSITION_KEY];
     }).catch(() => {}).finally(() => {
       ready = true; paint();
