@@ -444,14 +444,10 @@
       }, 75);
     }, 330);
   }
-  function editing(event) {
-    return (event.composedPath?.() || [event.target]).some(el =>
-      el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName) ||
-      el?.getAttribute?.('role') === 'textbox');
-  }
+
   function onKeyDown(event) {
     if (!ready || !selectVideo() || event.defaultPrevented || event.isComposing ||
-        event.ctrlKey || event.altKey || event.metaKey || editing(event) ||
+        event.ctrlKey || event.altKey || event.metaKey ||
         policy.isInteractivePath(event.composedPath?.() || [event.target])) return;
     const key = event.key.toLowerCase();
     if (key === 'd' || key === 's') { startHold(key); event.preventDefault(); return; }
@@ -476,7 +472,7 @@
     }, true);
     document.addEventListener('keydown', event => {
       inputMode = 'keyboard';
-      if (event.isTrusted && !editing(event) &&
+      if (event.isTrusted &&
           !policy.isInteractivePath(event.composedPath?.() || [event.target])) inputAt = Date.now();
     }, true);
     chrome.storage.onChanged.addListener((changes, area) => {
