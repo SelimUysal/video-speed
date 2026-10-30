@@ -23,3 +23,7 @@ Download repository, open `chrome://extensions`, enable **Developer mode**, then
 ## Publishing
 
 GitHub Actions manually checks store connection; pushing a tag matching `v` + `manifest.json` version packages the extension and submits it for Google review. See [Privacy Policy](PRIVACY_POLICY.md).
+
+## Independent website settings
+
+Speed and controller position are now remembered separately for each website. YouTube at 3× does not change another site's 16× setting. Multiple tabs of one site share that site's preferences. The popup controls the active site's speed. Legacy global settings are not copied to every site; each new site starts at 1.5× and the top-left panel until customized.
